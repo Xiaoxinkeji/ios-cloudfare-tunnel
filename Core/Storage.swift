@@ -1,131 +1,152 @@
 // Core/Storage.swift
-// Keychain helpers (API token) + UserDefaults helpers (TunnelConfig)
-
 import Foundation
 import Security
 
-// MARK: - Storage
+final class TunnelConfigurationStore {
+    static let shared = TunnelConfigurationStore()
 
-enum Storage {
+    private let key = "cloudflare-tunnel-configuration-v2"
+    private let legacyKey = "cloudflare-tunnel-configuration"
 
-    // ──────────────────────────────────────────────────
-    // MARK: Keychain – API Token
-    // ──────────────────────────────────────────────────
-
-    private static let tokenService = "com.xiaoxinkeji.cloudfare-tunnel"
-    private static let tokenAccount = "cloudflare-api-token"
-
-    /// Persists the Bearer token in the device Keychain.
-    static func saveToken(_ token: String) throws {
-        guard let data = token.data(using: .utf8) else {
-            throw StorageError.encodingFailed
-        }
-
-        // Delete any existing item first to avoid `errSecDuplicateItem`.
-        try? deleteToken()
-
-        let query: [String: Any] = [
-            kSecClass            as String: kSecClassGenericPassword,
-            kSecAttrService      as String: tokenService,
-            kSecAttrAccount      as String: tokenAccount,
-            kSecValueData        as String: data,
-            kSecAttrAccessible   as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        ]
-
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw StorageError.keychainError(status)
-        }
+    func save(_ configuration: TunnelConfiguration) throws {
+        let data = try JSONEncoder.tunnelEncoder.encode(configuration)
+        UserDefaults.standard.set(data, forKey: key)
     }
 
-    /// Reads the Bearer token from the device Keychain.
-    /// - Throws: `StorageError.tokenNotFound` if no token has been saved yet.
-    static func loadToken() throws -> String {
-        let query: [String: Any] = [
-            kSecClass            as String: kSecClassGenericPassword,
-            kSecAttrService      as String: tokenService,
-            kSecAttrAccount      as String: tokenAccount,
-            kSecReturnData       as String: true,
-            kSecMatchLimit       as String: kSecMatchLimitOne
-        ]
-
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-
-        guard status == errSecSuccess else {
-            if status == errSecItemNotFound {
-                throw StorageError.tokenNotFound
-            }
-            throw StorageError.keychainError(status)
+    func load() throws -> TunnelConfiguration {
+        if let data = UserDefaults.standard.data(forKey: key) {
+            return try JSONDecoder.tunnelDecoder.decode(TunnelConfiguration.self, from: data)
         }
 
-        guard
-            let data = item as? Data,
-            let token = String(data: data, encoding: .utf8)
-        else {
-            throw StorageError.decodingFailed
+        if UserDefaults.standard.data(forKey: legacyKey) != nil {
+            return .defaultValue
         }
 
-        return token
-    }
-
-    /// Removes the Bearer token from the Keychain.
-    static func deleteToken() throws {
-        let query: [String: Any] = [
-            kSecClass       as String: kSecClassGenericPassword,
-            kSecAttrService as String: tokenService,
-            kSecAttrAccount as String: tokenAccount
-        ]
-
-        let status = SecItemDelete(query as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw StorageError.keychainError(status)
-        }
-    }
-
-    // ──────────────────────────────────────────────────
-    // MARK: UserDefaults – TunnelConfig
-    // ──────────────────────────────────────────────────
-
-    private static let configKey = "tunnelConfig"
-
-    /// Encodes and stores `TunnelConfig` in `UserDefaults.standard`.
-    static func saveConfig(_ config: TunnelConfig) {
-        guard let data = try? JSONEncoder.cloudflare.encode(config) else { return }
-        UserDefaults.standard.set(data, forKey: configKey)
-    }
-
-    /// Loads and decodes `TunnelConfig` from `UserDefaults.standard`.
-    /// Returns `nil` if nothing has been saved yet.
-    static func loadConfig() -> TunnelConfig? {
-        guard
-            let data = UserDefaults.standard.data(forKey: configKey),
-            let config = try? JSONDecoder.cloudflare.decode(TunnelConfig.self, from: data)
-        else {
-            return nil
-        }
-        return config
+        return .defaultValue
     }
 }
 
-// MARK: - StorageError
+final class TunnelCredentialStore {
+    static let shared = TunnelCredentialStore()
 
-enum StorageError: LocalizedError {
-    case encodingFailed
-    case decodingFailed
-    case tokenNotFound
-    case keychainError(OSStatus)
+    private let service = "ios-cloudfare-tunnel.v2"
+
+    private enum Account: String {
+        case cloudflareAPIToken = "cloudflare.api-token"
+        case controlPlaneBearerToken = "control-plane.bearer-token"
+        case controlPlaneServiceTokenID = "control-plane.service-token-id"
+        case controlPlaneServiceTokenSecret = "control-plane.service-token-secret"
+    }
+
+    func saveCloudflareAPIToken(_ token: String) throws {
+        try save(token, for: .cloudflareAPIToken)
+    }
+
+    func loadCloudflareAPIToken() throws -> String? {
+        try load(for: .cloudflareAPIToken)
+    }
+
+    func saveControlPlaneBearerToken(_ token: String) throws {
+        try save(token, for: .controlPlaneBearerToken)
+    }
+
+    func loadControlPlaneBearerToken() throws -> String? {
+        try load(for: .controlPlaneBearerToken)
+    }
+
+    func saveControlPlaneServiceToken(clientId: String, clientSecret: String) throws {
+        try save(clientId, for: .controlPlaneServiceTokenID)
+        try save(clientSecret, for: .controlPlaneServiceTokenSecret)
+    }
+
+    func loadControlPlaneServiceToken() throws -> ControlPlaneServiceToken? {
+        guard
+            let clientId = try load(for: .controlPlaneServiceTokenID),
+            let clientSecret = try load(for: .controlPlaneServiceTokenSecret)
+        else {
+            return nil
+        }
+        return ControlPlaneServiceToken(clientId: clientId, clientSecret: clientSecret)
+    }
+
+    func loadCloudflareCredentials() throws -> CloudflareManagementCredentials? {
+        guard let apiToken = try loadCloudflareAPIToken(), !apiToken.isEmpty else {
+            return nil
+        }
+        return CloudflareManagementCredentials(apiToken: apiToken)
+    }
+
+    func loadControlPlaneCredentials() throws -> ControlPlaneCredentials {
+        ControlPlaneCredentials(
+            bearerToken: try loadControlPlaneBearerToken(),
+            serviceToken: try loadControlPlaneServiceToken()
+        )
+    }
+
+    private func save(_ value: String, for account: Account) throws {
+        let data = Data(value.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account.rawValue,
+            kSecValueData as String: data
+        ]
+
+        SecItemDelete(query as CFDictionary)
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+
+    private func load(for account: Account) throws -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account.rawValue,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status != errSecItemNotFound else { return nil }
+        guard status == errSecSuccess else {
+            throw KeychainError.unexpectedStatus(status)
+        }
+        guard let data = result as? Data, let value = String(data: data, encoding: .utf8) else {
+            throw KeychainError.invalidData
+        }
+        return value
+    }
+}
+
+enum KeychainError: LocalizedError {
+    case unexpectedStatus(OSStatus)
+    case invalidData
 
     var errorDescription: String? {
         switch self {
-        case .encodingFailed:
-            return "Failed to encode the token for storage."
-        case .decodingFailed:
-            return "Failed to decode the token from storage."
-        case .tokenNotFound:
-            return "No API token found. Please add your Cloudflare API Token in Settings."
-        case .keychainError(let status):
-            return "Keychain error (OSStatus \(status))."
+        case .unexpectedStatus(let status):
+            return "Keychain error: \(status)"
+        case .invalidData:
+            return "Stored credential is invalid."
         }
+    }
+}
+
+// Backwards-compat shim used by older call sites; new code should use TunnelCredentialStore directly.
+enum Storage {
+    static func loadConfig() -> TunnelConfig? {
+        nil
+    }
+    static func saveConfig(_ config: TunnelConfig) {
+        // legacy no-op
+    }
+    static func loadToken() throws -> String {
+        guard let token = try TunnelCredentialStore.shared.loadCloudflareAPIToken(), !token.isEmpty else {
+            throw TunnelError.unauthorized
+        }
+        return token
     }
 }

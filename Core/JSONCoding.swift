@@ -29,3 +29,15 @@ extension JSONEncoder {
         return encoder
     }()
 }
+
+// MARK: - Aliases used by the tunnel API / control-plane API layers
+// These point at the same Cloudflare-compatible coders so that call sites
+// using either name compile against a single shared configuration.
+
+extension JSONDecoder {
+    static let tunnelDecoder: JSONDecoder = JSONDecoder.cloudflare
+}
+
+extension JSONEncoder {
+    static let tunnelEncoder: JSONEncoder = JSONEncoder.cloudflare
+}

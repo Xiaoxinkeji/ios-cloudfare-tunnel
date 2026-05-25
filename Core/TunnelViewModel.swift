@@ -1,230 +1,243 @@
 // Core/TunnelViewModel.swift
-// Observable view-model that drives the entire app UI
-
 import Foundation
 import SwiftUI
-import Combine
 
 @MainActor
 final class TunnelViewModel: ObservableObject {
+    @Published var status: TunnelStatus = .idle
+    @Published var configuration: TunnelConfiguration = .defaultValue
+    @Published var transientError: TunnelError?
+    @Published var isEditingConfig = false
+    @Published private(set) var cloudflareAuthState: AuthState = .unconfigured
+    @Published private(set) var controlPlaneAuthState: AuthState = .unconfigured
 
-    // MARK: - Published state
+    private let cloudflareAPI: CloudflareTunnelAPIProtocol
+    private let controlBackendAPI: TunnelControlBackendAPIProtocol
+    private var didLoad = false
 
-    @Published var state: TunnelState = .disconnected
-    @Published var lastRefreshed: Date? = nil
-    @Published var config: TunnelConfig = Storage.loadConfig() ?? .default
+    init(
+        cloudflareAPI: CloudflareTunnelAPIProtocol = CloudflareTunnelAPIClient(),
+        controlBackendAPI: TunnelControlBackendAPIProtocol = TunnelControlBackendAPIClient()
+    ) {
+        self.cloudflareAPI = cloudflareAPI
+        self.controlBackendAPI = controlBackendAPI
 
-    /// Non-blocking error shown as a transient banner (polling failures, conflict, etc.).
-    /// Does NOT move the main `state` to `.failure`.
-    @Published var transientError: TunnelError? = nil
-
-    // MARK: - Private
-
-    private var apiClient: CloudflareTunnelAPIProtocol
-    private var pollingTask: Task<Void, Never>?
-    private var transientErrorDismissTask: Task<Void, Never>?
-    private let pollingInterval: TimeInterval = 30
-
-    // MARK: - Init
-
-    init() {
-        self.apiClient = RemoteCloudflareAPIClient(config: Storage.loadConfig() ?? .default)
-    }
-
-    // MARK: - Derived UI properties
-
-    /// Which actions are currently available given the current state.
-    var availableActions: [TunnelAction] {
-        state.validActions
-    }
-
-    /// Label shown on the single primary action button.
-    var primaryButtonLabel: String {
-        switch state {
-        case .disconnected:             return "Connect"
-        case .connecting:               return "Connecting…"
-        case .connected:                return "Disconnect"
-        case .disconnecting:            return "Disconnecting…"
-        case .failure:                  return "Retry"
+        do {
+            configuration = try TunnelConfigurationStore.shared.load()
+        } catch {
+            transientError = .invalidConfiguration(reason: error.localizedDescription)
         }
     }
 
-    /// Text and tint colour for the status indicator.
-    var statusDisplay: (text: String, tint: Color) {
-        switch state {
-        case .disconnected:
-            return ("Disconnected", .gray)
-        case .connecting:
-            return ("Connecting", .orange)
-        case .connected(let info):
-            return ("Connected – \(info.name)", .green)
-        case .disconnecting:
-            return ("Disconnecting", .orange)
-        case .failure:
-            return ("Connection Failed", .red)
+    var isBusy: Bool { status.state.isBusy }
+
+    var primaryActionTitle: String {
+        switch status.state {
+        case .disconnected: return "Start Tunnel"
+        case .connecting: return "Connecting…"
+        case .connected: return "Stop Tunnel"
+        case .disconnecting: return "Stopping…"
+        case .failure: return "Retry"
         }
     }
 
-    /// The tunnel display name shown at the top of HomeView.
-    var tunnelDisplayName: String {
-        if case .connected(let info) = state, !info.name.isEmpty {
-            return info.name
+    var primaryActionColor: Color {
+        switch status.state {
+        case .connected: return .red
+        case .connecting, .disconnecting: return .orange
+        case .disconnected, .failure: return .blue
         }
-        return config.tunnelId.isEmpty ? "My Tunnel" : config.tunnelId
     }
 
-    /// Error message string when state == .failure, otherwise nil.
-    var errorMessage: String? {
-        if case .failure(let error) = state {
-            return error.message
-        }
-        return nil
+    var lastUpdatedText: String {
+        guard let lastUpdatedAt = status.lastUpdatedAt else { return "Never updated" }
+        return lastUpdatedAt.formatted(date: .abbreviated, time: .shortened)
     }
 
-    // MARK: - Actions
+    func loadIfNeeded() async {
+        guard !didLoad else { return }
+        didLoad = true
+        await refreshAuthState()
+        await refresh()
+    }
 
-    /// Dispatches a `TunnelAction`, runs the appropriate API call, and updates `state`.
+    func primaryAction() async {
+        switch status.state {
+        case .disconnected: await perform(.start)
+        case .connected: await perform(.stop)
+        case .failure: await perform(.retry)
+        case .connecting, .disconnecting: break
+        }
+    }
+
     func perform(_ action: TunnelAction) async {
-        guard !config.tunnelId.isEmpty, !config.accountId.isEmpty else {
-            state = .failure(error: .invalidConfiguration(reason: "Tunnel ID 或 Account ID 未填写。"))
-            return
-        }
-
-        switch action {
-
-        case .start:
-            state = .connecting
-            await withExponentialBackoff(maxRetries: 2) {
-                let info = try await self.apiClient.startTunnel(id: self.config.tunnelId)
-                self.state = .connected(info: info)
-                self.lastRefreshed = Date()
-            } onFailure: { error in
-                self.state = .failure(error: error)
-            }
-
-        case .stop:
-            state = .disconnecting
-            await withExponentialBackoff(maxRetries: 2) {
-                let info = try await self.apiClient.stopTunnel(id: self.config.tunnelId)
-                // After DELETE the tunnel may still report a status; treat non-healthy as disconnected.
-                if info.isRunning {
-                    self.state = .connected(info: info)
-                } else {
-                    self.state = .disconnected
-                }
-                self.lastRefreshed = Date()
-            } onFailure: { error in
-                self.state = .failure(error: error)
-            }
-
-        case .refresh:
-            // Polling refresh: keep last connected state on error, surface via transientError.
-            do {
-                let info = try await apiClient.getTunnelStatus(id: config.tunnelId)
-                state = info.isRunning ? .connected(info: info) : .disconnected
-                lastRefreshed = Date()
-                clearTransientError()
-            } catch let error as TunnelError {
-                postTransientError(error)
-            } catch {
-                postTransientError(.unknown(message: error.localizedDescription))
-            }
-
-        case .retry:
-            // Retry goes back to disconnected then immediately starts.
-            state = .disconnected
-            await perform(.start)
+        switch (status.state, action) {
+        case (.disconnected, .start):
+            status = .connecting(message: "Sending start request…", updatedAt: Date())
+            await startTunnel()
+        case (.connected, .stop):
+            status = .disconnecting(message: "Sending stop request…", updatedAt: Date())
+            await stopTunnel()
+        case (_, .refresh):
+            await refresh()
+        case (.failure, .retry):
+            transientError = nil
+            status = .disconnected(message: "Ready to retry.", updatedAt: Date())
+        default:
+            break
         }
     }
 
-    // MARK: - Transient error management
+    func refresh() async {
+        do {
+            let tunnelId = try requireTunnelID()
+            let accountId = try requireAccountID()
 
-    /// Sets `transientError` and schedules an auto-dismiss after 3 seconds.
-    private func postTransientError(_ error: TunnelError) {
-        transientError = error
-        transientErrorDismissTask?.cancel()
-        transientErrorDismissTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-            guard !Task.isCancelled else { return }
-            await MainActor.run { self?.transientError = nil }
+            async let tunnel = cloudflareAPI.fetchTunnelDetail(accountId: accountId, tunnelId: tunnelId)
+            async let connections = cloudflareAPI.fetchConnections(accountId: accountId, tunnelId: tunnelId)
+            async let runtime = controlBackendAPI.fetchRuntimeStatus(tunnelId: tunnelId)
+
+            let (loadedTunnel, loadedConnections, runtimeStatus) = try await (tunnel, connections, runtime)
+            status = mapStatus(runtime: runtimeStatus, tunnel: loadedTunnel, connections: loadedConnections)
+            transientError = nil
+        } catch let error as TunnelError {
+            if case .connected = status.state {
+                transientError = error
+            } else {
+                status = .failure(message: error.message, updatedAt: Date())
+                transientError = error
+            }
+        } catch {
+            let tunnelError = TunnelError.unknown(message: error.localizedDescription)
+            status = .failure(message: tunnelError.message, updatedAt: Date())
+            transientError = tunnelError
+        }
+
+        await refreshAuthState()
+    }
+
+    func saveConfiguration(_ configuration: TunnelConfiguration) async {
+        do {
+            try await cloudflareAPI.saveConfiguration(configuration)
+            self.configuration = configuration
+            transientError = nil
+            await refreshAuthState()
+            await refresh()
+        } catch let error as TunnelError {
+            status = .failure(message: error.message, updatedAt: Date())
+            transientError = error
+        } catch {
+            let tunnelError = TunnelError.unknown(message: error.localizedDescription)
+            status = .failure(message: tunnelError.message, updatedAt: Date())
+            transientError = tunnelError
         }
     }
 
-    /// Clears any pending transient error immediately.
-    private func clearTransientError() {
-        transientErrorDismissTask?.cancel()
-        transientErrorDismissTask = nil
-        transientError = nil
+    private func startTunnel() async {
+        await runControlAction(maxRetries: 2, delays: [1, 2]) { [self] in
+            try await controlBackendAPI.startTunnel(tunnelId: requireTunnelID())
+        }
     }
 
-    // MARK: - Exponential backoff
+    private func stopTunnel() async {
+        await runControlAction(maxRetries: 2, delays: [1, 2]) { [self] in
+            try await controlBackendAPI.stopTunnel(tunnelId: requireTunnelID())
+        }
+    }
 
-    /// Runs `work` up to `1 + maxRetries` times, doubling the delay after each
-    /// retryable failure.  Only retries when `TunnelError.shouldAutoRetry == true`.
-    private func withExponentialBackoff(
+    private func runControlAction(
         maxRetries: Int,
-        work: @escaping () async throws -> Void,
-        onFailure: @escaping (TunnelError) -> Void
+        delays: [TimeInterval],
+        operation: @escaping () async throws -> RuntimeTunnelStatus
     ) async {
         var attempt = 0
-        var delay: TimeInterval = 1
 
         while true {
             do {
-                try await work()
+                let runtime = try await operation()
+                let tunnelId = try requireTunnelID()
+                let accountId = try requireAccountID()
+                let tunnel = try await cloudflareAPI.fetchTunnelDetail(accountId: accountId, tunnelId: tunnelId)
+                let connections = try await cloudflareAPI.fetchConnections(accountId: accountId, tunnelId: tunnelId)
+
+                status = mapStatus(runtime: runtime, tunnel: tunnel, connections: connections)
+                transientError = nil
                 return
-            } catch let tunnelError as TunnelError {
-                if tunnelError.shouldAutoRetry && attempt < maxRetries {
+            } catch let error as TunnelError {
+                if error.shouldAutoRetry && attempt < maxRetries {
+                    let delay = attempt < delays.count ? delays[attempt] : error.suggestedRetryDelay
                     attempt += 1
-                    let actualDelay = tunnelError.suggestedRetryDelay > 0
-                        ? tunnelError.suggestedRetryDelay
-                        : delay
-                    try? await Task.sleep(nanoseconds: UInt64(actualDelay * 1_000_000_000))
-                    delay *= 2
-                } else {
-                    onFailure(tunnelError)
-                    return
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    continue
                 }
+
+                status = .failure(message: error.message, updatedAt: Date())
+                transientError = error
+                return
             } catch {
-                onFailure(.unknown(message: error.localizedDescription))
+                let tunnelError = TunnelError.unknown(message: error.localizedDescription)
+                status = .failure(message: tunnelError.message, updatedAt: Date())
+                transientError = tunnelError
                 return
             }
         }
     }
 
-    // MARK: - Polling
+    private func mapStatus(
+        runtime: RuntimeTunnelStatus,
+        tunnel: CloudflareTunnel,
+        connections: [TunnelConnectionClient]
+    ) -> TunnelStatus {
+        let info = TunnelInfo(
+            id: tunnel.id,
+            name: tunnel.name,
+            status: tunnel.status ?? "unknown",
+            createdAt: tunnel.createdAt,
+            healthcheck: nil,
+            healthSummary: runtime.healthcheck,
+            logLines: (runtime.logs ?? []).map { TunnelLogEntry(timestamp: Date(), message: $0) }
+        )
 
-    /// Starts a repeating 30-second status-refresh loop.
-    func startPolling() {
-        stopPolling()
-        pollingTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(30 * 1_000_000_000))
-                guard !Task.isCancelled else { break }
-                await self?.perform(.refresh)
-            }
+        switch runtime.state {
+        case .disconnected:
+            return .disconnected(message: runtime.subtitle, updatedAt: runtime.updatedAt)
+        case .connecting:
+            return .connecting(message: runtime.subtitle, updatedAt: runtime.updatedAt)
+        case .connected:
+            return .connected(
+                info: info,
+                title: runtime.title,
+                subtitle: runtime.subtitle,
+                updatedAt: runtime.updatedAt,
+                healthSummary: tunnel.status ?? runtime.healthcheck ?? "healthy",
+                logLines: runtime.logs ?? [],
+                tunnel: tunnel,
+                connections: connections
+            )
+        case .disconnecting:
+            return .disconnecting(message: runtime.subtitle, updatedAt: runtime.updatedAt)
+        case .failure:
+            return .failure(message: runtime.subtitle, updatedAt: runtime.updatedAt)
         }
     }
 
-    /// Cancels the polling loop.
-    func stopPolling() {
-        pollingTask?.cancel()
-        pollingTask = nil
+    private func refreshAuthState() async {
+        cloudflareAuthState = await cloudflareAPI.authState()
+        controlPlaneAuthState = await controlBackendAPI.authState()
     }
 
-    // MARK: - Config persistence
-
-    /// Persists the current `config` to UserDefaults and rebuilds the API client.
-    func saveConfig() {
-        Storage.saveConfig(config)
-        apiClient = RemoteCloudflareAPIClient(config: config)
-    }
-
-    /// Re-loads config from UserDefaults (called after ConfigEditorView saves).
-    func reloadConfig() {
-        if let saved = Storage.loadConfig() {
-            config = saved
+    private func requireTunnelID() throws -> String {
+        guard let tunnelId = configuration.tunnelId?.trimmingCharacters(in: .whitespacesAndNewlines), !tunnelId.isEmpty else {
+            throw TunnelError.invalidConfiguration(reason: "Tunnel ID is missing.")
         }
-        apiClient = RemoteCloudflareAPIClient(config: config)
+        return tunnelId
+    }
+
+    private func requireAccountID() throws -> String {
+        let accountId = configuration.accountId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !accountId.isEmpty else {
+            throw TunnelError.invalidConfiguration(reason: "Account ID is missing.")
+        }
+        return accountId
     }
 }

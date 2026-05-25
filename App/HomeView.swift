@@ -1,225 +1,194 @@
 // App/HomeView.swift
-// Main screen – shows tunnel status and primary connect/disconnect button
-
 import SwiftUI
 
 struct HomeView: View {
-
     @EnvironmentObject private var viewModel: TunnelViewModel
-    @State private var showSettings = false
-    @State private var isPerformingAction = false
-
-    // MARK: - Body
 
     var body: some View {
-        ZStack {
-            Color(uiColor: .systemBackground)
-                .ignoresSafeArea()
-
-            VStack(spacing: 0) {
-
-                // ── Transient error banner ────────────────────────────────
-                if let transientErr = viewModel.transientError {
-                    transientErrorBanner(transientErr)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .padding(.top, 8)
-                        .padding(.horizontal, 16)
-                }
-
-                Spacer()
-
-                // ── Tunnel name ───────────────────────────────────────────
-                Text(viewModel.tunnelDisplayName)
-                    .font(.largeTitle.weight(.bold))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 40)
-
-                // ── Status indicator ──────────────────────────────────────
-                statusIndicator
-
-                // ── Error message ─────────────────────────────────────────
-                if let errorMsg = viewModel.errorMessage {
-                    Text(errorMsg)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                        .padding(.top, 12)
-                        .transition(.opacity)
-                }
-
-                // ── Detail link (connected state only) ────────────────────
-                if case .connected(let info) = viewModel.state {
-                    NavigationLink {
-                        TunnelDetailView(tunnel: info) {
-                            await viewModel.perform(.refresh)
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "info.circle")
-                                .imageScale(.small)
-                            Text("查看 Tunnel 详情")
-                                .font(.subheadline)
-                        }
-                        .foregroundStyle(.blue)
-                        .padding(.top, 16)
-                    }
-                    .transition(.opacity)
-                }
-
-                Spacer()
-
-                // ── Primary action button ─────────────────────────────────
-                primaryButton
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 16)
-
-                // ── Last refreshed timestamp ──────────────────────────────
-                lastRefreshedLabel
-                    .padding(.bottom, 32)
+        ScrollView {
+            VStack(spacing: 18) {
+                header
+                statusCard
+                actionCard
+                detailCard
+                configCard
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
         }
-        .navigationTitle("")
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle("Tunnel")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+        .task { await viewModel.loadIfNeeded() }
+        .refreshable { await viewModel.refresh() }
+        .alert(
+            viewModel.transientError?.title ?? "Error",
+            isPresented: Binding(
+                get: { viewModel.transientError != nil },
+                set: { if !$0 { viewModel.transientError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { viewModel.transientError = nil }
+        } message: {
+            Text(viewModel.transientError?.message ?? "")
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Cloudflare Tunnel")
+                .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+            Text("One screen. One action. Full control.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var statusCard: some View {
+        Card {
+            HStack(spacing: 14) {
+                StatusDot(state: viewModel.status.state)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(viewModel.status.title)
+                        .font(.headline)
+                    Text(viewModel.status.subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+        }
+    }
+
+    private var actionCard: some View {
+        Card {
+            VStack(spacing: 12) {
                 Button {
-                    showSettings = true
+                    Task { await viewModel.primaryAction() }
                 } label: {
-                    Image(systemName: "gearshape.fill")
-                        .imageScale(.large)
+                    HStack {
+                        Spacer()
+                        if viewModel.isBusy {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Text(viewModel.primaryActionTitle)
+                                .font(.headline)
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 14)
                 }
-                .accessibilityLabel("Settings")
-            }
-        }
-        .sheet(isPresented: $showSettings, onDismiss: {
-            viewModel.reloadConfig()
-        }) {
-            ConfigEditorView()
-                .environmentObject(viewModel)
-        }
-        .animation(.easeInOut(duration: 0.25), value: viewModel.state)
-        .animation(.easeInOut(duration: 0.2),  value: viewModel.transientError == nil)
-        .onAppear {
-            viewModel.startPolling()
-        }
-        .onDisappear {
-            viewModel.stopPolling()
-        }
-    }
-
-    // MARK: - Subviews
-
-    /// Small banner shown at the top for non-fatal / transient errors.
-    private func transientErrorBanner(_ error: TunnelError) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-                .imageScale(.small)
-                .padding(.top, 1)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(error.title)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Text(error.message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemBackground))
-                .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
-        )
-    }
-
-    @ViewBuilder
-    private var statusIndicator: some View {
-        let display = viewModel.statusDisplay
-        HStack(spacing: 10) {
-            if viewModel.state.isBusy {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .tint(display.tint)
-                    .scaleEffect(0.9)
-            } else {
-                Circle()
-                    .fill(display.tint)
-                    .frame(width: 14, height: 14)
-                    .shadow(color: display.tint.opacity(0.6), radius: 4)
-            }
-
-            Text(display.text)
-                .font(.headline)
-                .foregroundStyle(display.tint)
-        }
-    }
-
-    @ViewBuilder
-    private var primaryButton: some View {
-        Button {
-            guard !isPerformingAction else { return }
-            isPerformingAction = true
-            Task {
-                defer { isPerformingAction = false }
-                // Determine correct action based on state
-                switch viewModel.state {
-                case .disconnected:          await viewModel.perform(.start)
-                case .connected:             await viewModel.perform(.stop)
-                case .failure:               await viewModel.perform(.retry)
-                case .connecting,
-                     .disconnecting:         break   // Button is disabled
-                }
-            }
-        } label: {
-            Text(viewModel.primaryButtonLabel)
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(buttonBackground)
+                .buttonStyle(.plain)
+                .background(viewModel.primaryActionColor)
                 .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .disabled(viewModel.state.isBusy || isPerformingAction)
-        .opacity(viewModel.state.isBusy ? 0.6 : 1.0)
-    }
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .disabled(viewModel.isBusy)
 
-    private var buttonBackground: Color {
-        switch viewModel.state {
-        case .disconnected:         return .blue
-        case .connecting:           return .blue.opacity(0.7)
-        case .connected:            return .red
-        case .disconnecting:        return .red.opacity(0.7)
-        case .failure:              return .orange
+                HStack {
+                    Label(viewModel.lastUpdatedText, systemImage: "clock")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
         }
     }
 
     @ViewBuilder
-    private var lastRefreshedLabel: some View {
-        if let date = viewModel.lastRefreshed {
-            Text("Last refreshed \(date, style: .relative) ago")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        } else {
-            Text("Not yet refreshed")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private var detailCard: some View {
+        if let info = viewModel.status.info {
+            NavigationLink {
+                TunnelDetailView(tunnel: info)
+            } label: {
+                Card {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Details")
+                                .font(.headline)
+                            Text("Tunnel ID, health check, and recent logs")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var configCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Configuration")
+                        .font(.headline)
+                    Spacer()
+                    Button("Edit") { viewModel.isEditingConfig = true }
+                        .font(.subheadline.weight(.semibold))
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    ConfigRow(title: "Cloudflare API", value: viewModel.configuration.cloudflareAPIBaseURL.absoluteString)
+                    ConfigRow(title: "Cloudflare Auth", value: viewModel.cloudflareAuthState.title)
+                    ConfigRow(title: "Control Backend", value: viewModel.configuration.controlPlaneURL?.absoluteString ?? "—")
+                    ConfigRow(title: "Control Auth", value: viewModel.controlPlaneAuthState.title)
+                    ConfigRow(title: "Account", value: viewModel.configuration.accountId)
+                    ConfigRow(title: "Tunnel", value: viewModel.configuration.tunnelId ?? "—")
+                }
+            }
+        }
+        .sheet(isPresented: $viewModel.isEditingConfig) {
+            ConfigEditorView(configuration: viewModel.configuration) { newConfig in
+                Task { await viewModel.saveConfiguration(newConfig) }
+            }
         }
     }
 }
 
-// MARK: - Preview
+private struct Card<Content: View>: View {
+    @ViewBuilder let content: Content
 
-#Preview {
-    NavigationStack {
-        HomeView()
+    var body: some View {
+        content
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
-    .environmentObject(TunnelViewModel())
+}
+
+private struct StatusDot: View {
+    let state: TunnelState
+
+    var body: some View {
+        Circle()
+            .fill(state.tint)
+            .frame(width: 14, height: 14)
+            .shadow(color: state.tint.opacity(0.25), radius: 8, x: 0, y: 0)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct ConfigRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.subheadline)
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }

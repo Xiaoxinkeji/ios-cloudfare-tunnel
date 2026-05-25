@@ -1,167 +1,129 @@
 // App/ConfigEditorView.swift
-// Settings screen – allows the user to configure their Cloudflare credentials
-
 import SwiftUI
 
 struct ConfigEditorView: View {
-
-    @EnvironmentObject private var viewModel: TunnelViewModel
     @Environment(\.dismiss) private var dismiss
 
-    // Local editing state – mirrors viewModel.config fields + the Keychain token
-    @State private var apiToken: String   = ""
-    @State private var tunnelId: String   = ""
-    @State private var accountId: String  = ""
-    @State private var baseURL: String    = ""
+    @State private var cloudflareAPIBaseURLText: String
+    @State private var controlPlaneURLText: String
+    @State private var accountId: String
+    @State private var tunnelId: String
+    @State private var cloudflareAPIToken: String
+    @State private var controlBearerToken: String
+    @State private var serviceTokenId: String
+    @State private var serviceTokenSecret: String
+    @State private var controlPlaneAuthMode: ControlPlaneAuthMode
 
-    @State private var saveError: String? = nil
-    @State private var saved             = false
+    let onSave: (TunnelConfiguration) -> Void
 
-    // MARK: - Body
+    init(configuration: TunnelConfiguration, onSave: @escaping (TunnelConfiguration) -> Void) {
+        _cloudflareAPIBaseURLText = State(initialValue: configuration.cloudflareAPIBaseURL.absoluteString)
+        _controlPlaneURLText = State(initialValue: configuration.controlPlaneURL?.absoluteString ?? "")
+        _accountId = State(initialValue: configuration.accountId)
+        _tunnelId = State(initialValue: configuration.tunnelId ?? "")
+        _cloudflareAPIToken = State(initialValue: "")
+        _controlBearerToken = State(initialValue: "")
+        _serviceTokenId = State(initialValue: "")
+        _serviceTokenSecret = State(initialValue: "")
+        _controlPlaneAuthMode = State(initialValue: configuration.controlPlaneAuthMode)
+        self.onSave = onSave
+    }
 
     var body: some View {
         NavigationStack {
             Form {
-                // ── Credentials ───────────────────────────────────────────
-                Section {
-                    SecureField("API Token", text: $apiToken)
-                        .textContentType(.password)
-                        .autocorrectionDisabled()
+                Section("Cloudflare API") {
+                    TextField("https://api.cloudflare.com", text: $cloudflareAPIBaseURLText)
                         .textInputAutocapitalization(.never)
-                } header: {
-                    Text("Cloudflare API Token")
-                } footer: {
-                    Text("Create a token at dash.cloudflare.com › Profile › API Tokens with Tunnel:Edit permission.")
-                        .font(.caption)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                    TextField("Account ID", text: $accountId)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Tunnel ID", text: $tunnelId)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("API Token", text: $cloudflareAPIToken)
                 }
 
-                // ── Tunnel details ────────────────────────────────────────
-                Section("Tunnel Details") {
-                    LabeledContent("Tunnel ID") {
-                        TextField("xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", text: $tunnelId)
-                            .multilineTextAlignment(.trailing)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
+                Section("Control Backend") {
+                    TextField("https://control.example.com", text: $controlPlaneURLText)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+
+                    Picker("Auth", selection: $controlPlaneAuthMode) {
+                        Text("None").tag(ControlPlaneAuthMode.none)
+                        Text("Bearer Token").tag(ControlPlaneAuthMode.bearerToken)
+                        Text("Service Token").tag(ControlPlaneAuthMode.serviceToken)
                     }
 
-                    LabeledContent("Account ID") {
-                        TextField("32-char hex string", text: $accountId)
-                            .multilineTextAlignment(.trailing)
-                            .autocorrectionDisabled()
+                    if controlPlaneAuthMode == .bearerToken {
+                        SecureField("Bearer Token", text: $controlBearerToken)
+                    }
+
+                    if controlPlaneAuthMode == .serviceToken {
+                        TextField("Service Token Client ID", text: $serviceTokenId)
                             .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        SecureField("Service Token Secret", text: $serviceTokenSecret)
                     }
                 }
 
-                // ── Advanced ──────────────────────────────────────────────
                 Section {
-                    LabeledContent("Base URL") {
-                        TextField("https://api.cloudflare.com/client/v4", text: $baseURL)
-                            .multilineTextAlignment(.trailing)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.URL)
-                    }
-                } header: {
-                    Text("Advanced")
-                } footer: {
-                    Text("Change only if using a Cloudflare-compatible proxy or test environment.")
-                        .font(.caption)
-                }
-
-                // ── Error feedback ────────────────────────────────────────
-                if let errorMsg = saveError {
-                    Section {
-                        Text(errorMsg)
-                            .foregroundStyle(.red)
-                            .font(.callout)
-                    }
-                }
-
-                // ── Save button ───────────────────────────────────────────
-                Section {
-                    Button {
-                        saveSettings()
-                    } label: {
-                        HStack {
-                            Spacer()
-                            if saved {
-                                Label("Saved", systemImage: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                            } else {
-                                Text("Save")
-                                    .bold()
-                            }
-                            Spacer()
-                        }
-                    }
+                    Text("Leave credential fields empty to keep the current Keychain values.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle("Configuration")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        save()
                     }
+                    .disabled(accountId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || URL(string: cloudflareAPIBaseURLText) == nil)
                 }
             }
-            .onAppear(perform: loadCurrentValues)
         }
     }
 
-    // MARK: - Helpers
+    private func save() {
+        guard let cloudflareAPIBaseURL = URL(string: cloudflareAPIBaseURLText) else { return }
 
-    private func loadCurrentValues() {
-        tunnelId  = viewModel.config.tunnelId
-        accountId = viewModel.config.accountId
-        baseURL   = viewModel.config.baseURL.isEmpty
-            ? "https://api.cloudflare.com/client/v4"
-            : viewModel.config.baseURL
+        let credentialStore = TunnelCredentialStore.shared
+        let cleanCloudflareToken = cloudflareAPIToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanBearerToken = controlBearerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanServiceTokenId = serviceTokenId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanServiceTokenSecret = serviceTokenSecret.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Load token from Keychain (best-effort; blank field if not found)
-        apiToken = (try? Storage.loadToken()) ?? ""
+        if !cleanCloudflareToken.isEmpty {
+            try? credentialStore.saveCloudflareAPIToken(cleanCloudflareToken)
+        }
+        if !cleanBearerToken.isEmpty {
+            try? credentialStore.saveControlPlaneBearerToken(cleanBearerToken)
+        }
+        if !cleanServiceTokenId.isEmpty, !cleanServiceTokenSecret.isEmpty {
+            try? credentialStore.saveControlPlaneServiceToken(clientId: cleanServiceTokenId, clientSecret: cleanServiceTokenSecret)
+        }
+
+        let cleanControlURL = controlPlaneURLText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanTunnelId = tunnelId.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        onSave(
+            TunnelConfiguration(
+                cloudflareAPIBaseURL: cloudflareAPIBaseURL,
+                controlPlaneURL: cleanControlURL.isEmpty ? nil : URL(string: cleanControlURL),
+                accountId: accountId.trimmingCharacters(in: .whitespacesAndNewlines),
+                tunnelId: cleanTunnelId.isEmpty ? nil : cleanTunnelId,
+                cloudflareAuthMode: .apiToken,
+                controlPlaneAuthMode: controlPlaneAuthMode
+            )
+        )
+        dismiss()
     }
-
-    private func saveSettings() {
-        saveError = nil
-        saved     = false
-
-        // 1. Validate required fields
-        guard !tunnelId.isEmpty, !accountId.isEmpty else {
-            saveError = "Tunnel ID and Account ID are required."
-            return
-        }
-
-        // 2. Persist API token to Keychain
-        if !apiToken.isEmpty {
-            do {
-                try Storage.saveToken(apiToken)
-            } catch {
-                saveError = "Could not save API Token: \(error.localizedDescription)"
-                return
-            }
-        }
-
-        // 3. Persist TunnelConfig to UserDefaults via ViewModel
-        viewModel.config.tunnelId  = tunnelId
-        viewModel.config.accountId = accountId
-        viewModel.config.baseURL   = baseURL.isEmpty
-            ? "https://api.cloudflare.com/client/v4"
-            : baseURL
-
-        viewModel.saveConfig()
-
-        // 4. Brief "Saved" feedback then dismiss
-        withAnimation { saved = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            dismiss()
-        }
-    }
-}
-
-// MARK: - Preview
-
-#Preview {
-    ConfigEditorView()
-        .environmentObject(TunnelViewModel())
 }

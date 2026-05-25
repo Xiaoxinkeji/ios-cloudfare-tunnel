@@ -24,6 +24,9 @@
 		A1000014000014 /* TunnelNotificationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000015000015 /* TunnelNotificationState.swift */; };
 		A1000015000015 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000016000016 /* AppDelegate.swift */; };
 		A1000016000016 /* NotificationPermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000017000017 /* NotificationPermissionManager.swift */; };
+		A1000018000018 /* AuthModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000018000018 /* AuthModels.swift */; };
+		A1000019000019 /* TunnelControlBackendAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000019000019 /* TunnelControlBackendAPI.swift */; };
+		A1000020000020 /* UIHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000020000020 /* UIHelpers.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -45,6 +48,9 @@
 		A2000015000015 /* TunnelNotificationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelNotificationState.swift; sourceTree = "<group>"; };
 		A2000016000016 /* AppDelegate.swift */           = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift;           sourceTree = "<group>"; };
 		A2000017000017 /* NotificationPermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPermissionManager.swift; sourceTree = "<group>"; };
+		A2000018000018 /* AuthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthModels.swift; sourceTree = "<group>"; };
+		A2000019000019 /* TunnelControlBackendAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelControlBackendAPI.swift; sourceTree = "<group>"; };
+		A2000020000020 /* UIHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIHelpers.swift; sourceTree = "<group>"; };
 		A3000001000001 /* ios-cloudfare-tunnel.app */   = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ios-cloudfare-tunnel.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -96,6 +102,9 @@
 				A2000014000014 /* CloudflareDNSAPIProtocol.swift */,
 				A2000015000015 /* TunnelNotificationState.swift */,
 				A2000017000017 /* NotificationPermissionManager.swift */,
+				A2000018000018 /* AuthModels.swift */,
+				A2000019000019 /* TunnelControlBackendAPI.swift */,
+				A2000020000020 /* UIHelpers.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -193,6 +202,9 @@
 				A1000014000014 /* TunnelNotificationState.swift in Sources */,
 				A1000015000015 /* AppDelegate.swift in Sources */,
 				A1000016000016 /* NotificationPermissionManager.swift in Sources */,
+				A1000018000018 /* AuthModels.swift in Sources */,
+				A1000019000019 /* TunnelControlBackendAPI.swift in Sources */,
+				A1000020000020 /* UIHelpers.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
