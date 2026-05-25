@@ -1,4 +1,4 @@
-name: Build Enterprise IPA
+name: Build Unsigned IPA
 
 on:
   push:
@@ -14,78 +14,50 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app
-
-      - name: Install Apple certificate and provisioning profile
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
-          # Decode certificate and provisioning profile
-          CERT_PATH=$RUNNER_TEMP/build_certificate.p12
-          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          # Use latest available Xcode
+          ls /Applications/Xcode*.app -d 2>/dev/null || true
+          XCODE=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          echo "Using: $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
 
-          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERT_PATH
-          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+      - name: Resolve scheme name
+        id: scheme
+        run: |
+          SCHEME=$(xcodebuild -project ios-cloudfare-tunnel.xcodeproj -list 2>/dev/null \
+            | grep -A20 'Schemes:' | grep -v 'Schemes:' | head -1 | xargs)
+          echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
+          echo "Detected scheme: $SCHEME"
 
-          # Create temporary keychain
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-          # Import certificate
-          security import $CERT_PATH -P "$P12_PASSWORD" \
-            -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
-
-          # Install provisioning profile
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
-
-      - name: Build archive
+      - name: Build archive (no signing)
         run: |
           xcodebuild \
             -project ios-cloudfare-tunnel.xcodeproj \
-            -scheme ios-cloudfare-tunnel \
+            -scheme "${{ steps.scheme.outputs.scheme }}" \
             -configuration Release \
             -destination generic/platform=iOS \
             -archivePath $RUNNER_TEMP/app.xcarchive \
-            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            SKIP_INSTALL=NO \
+            BUILD_LIBRARY_FOR_DISTRIBUTION=NO \
             archive
 
-      - name: Export IPA (Enterprise)
+      - name: Package unsigned IPA
         run: |
-          cat > $RUNNER_TEMP/ExportOptions.plist << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>enterprise</string>
-              <key>compileBitcode</key>
-              <false/>
-              <key>stripSwiftSymbols</key>
-              <true/>
-          </dict>
-          </plist>
-          EOF
+          APP_PATH=$(find $RUNNER_TEMP/app.xcarchive -name "*.app" | head -1)
+          echo "App: $APP_PATH"
+          mkdir -p $RUNNER_TEMP/ipa/Payload
+          cp -r "$APP_PATH" $RUNNER_TEMP/ipa/Payload/
+          cd $RUNNER_TEMP/ipa
+          zip -qr ../CloudfareTunnel-unsigned.ipa Payload
+          echo "IPA size: $(du -sh ../CloudfareTunnel-unsigned.ipa)"
 
-          xcodebuild -exportArchive \
-            -archivePath $RUNNER_TEMP/app.xcarchive \
-            -exportPath $RUNNER_TEMP/ipa \
-            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist
-
-      - name: Upload IPA artifact
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CloudfareTunnel-Enterprise
-          path: ${{ runner.temp }}/ipa/*.ipa
+          name: CloudfareTunnel-unsigned
+          path: ${{ runner.temp }}/CloudfareTunnel-unsigned.ipa
           retention-days: 30
-
-      - name: Clean up keychain
-        if: always()
-        run: |
-          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
