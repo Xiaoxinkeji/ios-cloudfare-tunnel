@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Bundle identity -->
+	<key>CFBundleName</key>
+	<string>Cloudflare Tunnel</string>
+
+	<key>CFBundleDisplayName</key>
+	<string>Cloudflare Tunnel</string>
+
+	<key>CFBundleIdentifier</key>
+	<string>com.xiaoxinkeji.cloudfare-tunnel</string>
+
+	<key>CFBundleVersion</key>
+	<string>1</string>
+
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+
+	<!-- Deployment target -->
+	<key>MinimumOSVersion</key>
+	<string>16.0</string>
+
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+
+	<!-- Supported device families: 1=iPhone, 2=iPad -->
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
+		<integer>2</integer>
+	</array>
+
+	<!-- Orientation support -->
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<!-- SwiftUI lifecycle – required for scene-based apps -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+
+	<!-- Status-bar appearance -->
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleDefault</string>
+
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<true/>
+
+	<!-- Appearance -->
+	<key>UIUserInterfaceStyle</key>
+	<string>Automatic</string>
+
+	<!-- Network – allow arbitrary loads so users can point the base URL
+	     at private/self-hosted Cloudflare-compatible endpoints -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+
+	<!-- Human-readable usage strings (App Store requirement) -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID is used to protect access to your stored API token.</string>
+</dict>
+</plist>
