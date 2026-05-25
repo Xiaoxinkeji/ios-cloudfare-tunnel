@@ -19,6 +19,9 @@
 		A1000009000009 /* TunnelViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009000009 /* TunnelViewModel.swift */; };
 		A1000010000010 /* Storage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000010000010 /* Storage.swift */; };
 		A1000011000011 /* JSONCoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000011000011 /* JSONCoding.swift */; };
+		A1000012000012 /* DNSRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000013000013 /* DNSRecord.swift */; };
+		A1000013000013 /* CloudflareDNSAPIProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000014000014 /* CloudflareDNSAPIProtocol.swift */; };
+		A1000014000014 /* TunnelNotificationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000015000015 /* TunnelNotificationState.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +38,9 @@
 		A2000010000010 /* Storage.swift */              = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Storage.swift;              sourceTree = "<group>"; };
 		A2000011000011 /* JSONCoding.swift */           = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONCoding.swift;           sourceTree = "<group>"; };
 		A2000012000012 /* Info.plist */                 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml;   path = Info.plist;                 sourceTree = "<group>"; };
+		A2000013000013 /* DNSRecord.swift */             = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNSRecord.swift;             sourceTree = "<group>"; };
+		A2000014000014 /* CloudflareDNSAPIProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareDNSAPIProtocol.swift; sourceTree = "<group>"; };
+		A2000015000015 /* TunnelNotificationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelNotificationState.swift; sourceTree = "<group>"; };
 		A3000001000001 /* ios-cloudfare-tunnel.app */   = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ios-cloudfare-tunnel.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -81,6 +87,9 @@
 				A2000009000009 /* TunnelViewModel.swift */,
 				A2000010000010 /* Storage.swift */,
 				A2000011000011 /* JSONCoding.swift */,
+				A2000013000013 /* DNSRecord.swift */,
+				A2000014000014 /* CloudflareDNSAPIProtocol.swift */,
+				A2000015000015 /* TunnelNotificationState.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -173,6 +182,9 @@
 				A1000009000009 /* TunnelViewModel.swift in Sources */,
 				A1000010000010 /* Storage.swift in Sources */,
 				A1000011000011 /* JSONCoding.swift in Sources */,
+				A1000012000012 /* DNSRecord.swift in Sources */,
+				A1000013000013 /* CloudflareDNSAPIProtocol.swift in Sources */,
+				A1000014000014 /* TunnelNotificationState.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
