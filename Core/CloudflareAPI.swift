@@ -17,7 +17,7 @@ final class RemoteCloudflareAPIClient: CloudflareTunnelAPIProtocol {
             do {
                 return try Storage.loadToken()
             } catch {
-                throw TunnelError.invalidConfiguration
+                throw TunnelError.invalidConfiguration(reason: "API Token 未设置或读取失败。")
             }
         }
     }
@@ -53,7 +53,7 @@ final class RemoteCloudflareAPIClient: CloudflareTunnelAPIProtocol {
     }
 
     func stopTunnel(id: String) async throws -> TunnelInfo {
-        // POST to the clean-up endpoint forces the tunnel into a disconnected state
+        // DELETE to the connections endpoint forces the tunnel into a disconnected state
         // (terminates active connections).
         let url = try buildURL(path: "/accounts/\(config.accountId)/cfd_tunnel/\(id)/connections")
         var request = URLRequest(url: url)
@@ -82,7 +82,7 @@ final class RemoteCloudflareAPIClient: CloudflareTunnelAPIProtocol {
             let base = URL(string: config.baseURL),
             let url  = URL(string: path, relativeTo: base)
         else {
-            throw TunnelError.invalidConfiguration
+            throw TunnelError.invalidConfiguration(reason: "Account ID 或 Base URL 无效。")
         }
         return url
     }
@@ -101,12 +101,16 @@ final class RemoteCloudflareAPIClient: CloudflareTunnelAPIProtocol {
         do {
             (data, response) = try await session.data(for: request)
         } catch let urlError as URLError {
-            if urlError.code == .timedOut {
-                throw TunnelError.timeout
+            switch urlError.code {
+            case .timedOut, .networkConnectionLost:
+                throw TunnelError.networkUnavailable
+            case .notConnectedToInternet, .dataNotAllowed:
+                throw TunnelError.networkUnavailable
+            default:
+                throw TunnelError.unknown(message: urlError.localizedDescription)
             }
-            throw TunnelError.transport(urlError.localizedDescription)
         } catch {
-            throw TunnelError.transport(error.localizedDescription)
+            throw TunnelError.unknown(message: error.localizedDescription)
         }
 
         // Map HTTP status codes to typed errors before attempting decode.
@@ -114,18 +118,41 @@ final class RemoteCloudflareAPIClient: CloudflareTunnelAPIProtocol {
             switch httpResponse.statusCode {
             case 200...299:
                 break // OK – fall through to decode
-            case 401, 403:
+
+            case 401:
                 throw TunnelError.unauthorized
-            case 408, 504:
-                throw TunnelError.timeout
+
+            case 403:
+                throw TunnelError.forbidden
+
+            case 404:
+                throw TunnelError.tunnelNotFound
+
+            case 409:
+                throw TunnelError.conflict
+
+            case 429:
+                // Honour Retry-After header when present.
+                let retryAfter: TimeInterval?
+                if let raw = httpResponse.value(forHTTPHeaderField: "Retry-After"),
+                   let seconds = TimeInterval(raw) {
+                    retryAfter = seconds
+                } else {
+                    retryAfter = nil
+                }
+                throw TunnelError.rateLimited(retryAfter: retryAfter)
+
+            case 500...599:
+                throw TunnelError.serverUnavailable
+
             default:
-                // Try to extract Cloudflare error message from body
+                // Try to extract Cloudflare error message from body.
                 if let envelope = try? JSONDecoder.cloudflare.decode(
                     CloudflareResponse<AnyCodable>.self, from: data),
                    let firstError = envelope.errors.first {
-                    throw TunnelError.api("\(firstError.message) (code \(firstError.code))")
+                    throw TunnelError.unknown(message: "\(firstError.message) (code \(firstError.code))")
                 }
-                throw TunnelError.api("HTTP \(httpResponse.statusCode)")
+                throw TunnelError.unknown(message: "HTTP \(httpResponse.statusCode)")
             }
         }
 
@@ -139,18 +166,18 @@ final class RemoteCloudflareAPIClient: CloudflareTunnelAPIProtocol {
                 let message = envelope.errors.first.map {
                     "\($0.message) (code \($0.code))"
                 } ?? "Unknown API error"
-                throw TunnelError.api(message)
+                throw TunnelError.unknown(message: message)
             }
 
             guard let tunnelInfo = envelope.result else {
-                throw TunnelError.decoding
+                throw TunnelError.decodingFailed
             }
 
             return tunnelInfo
         } catch let tunnelErr as TunnelError {
             throw tunnelErr
         } catch {
-            throw TunnelError.decoding
+            throw TunnelError.decodingFailed
         }
     }
 }

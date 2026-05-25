@@ -14,10 +14,15 @@ final class TunnelViewModel: ObservableObject {
     @Published var lastRefreshed: Date? = nil
     @Published var config: TunnelConfig = Storage.loadConfig() ?? .default
 
+    /// Non-blocking error shown as a transient banner (polling failures, conflict, etc.).
+    /// Does NOT move the main `state` to `.failure`.
+    @Published var transientError: TunnelError? = nil
+
     // MARK: - Private
 
     private var apiClient: CloudflareTunnelAPIProtocol
     private var pollingTask: Task<Void, Never>?
+    private var transientErrorDismissTask: Task<Void, Never>?
     private let pollingInterval: TimeInterval = 30
 
     // MARK: - Init
@@ -71,7 +76,7 @@ final class TunnelViewModel: ObservableObject {
     /// Error message string when state == .failure, otherwise nil.
     var errorMessage: String? {
         if case .failure(let error) = state {
-            return error.localizedDescription
+            return error.message
         }
         return nil
     }
@@ -81,7 +86,7 @@ final class TunnelViewModel: ObservableObject {
     /// Dispatches a `TunnelAction`, runs the appropriate API call, and updates `state`.
     func perform(_ action: TunnelAction) async {
         guard !config.tunnelId.isEmpty, !config.accountId.isEmpty else {
-            state = .failure(error: .invalidConfiguration)
+            state = .failure(error: .invalidConfiguration(reason: "Tunnel ID 或 Account ID 未填写。"))
             return
         }
 
@@ -89,48 +94,101 @@ final class TunnelViewModel: ObservableObject {
 
         case .start:
             state = .connecting
-            do {
-                let info = try await apiClient.startTunnel(id: config.tunnelId)
-                state = .connected(info: info)
-                lastRefreshed = Date()
-            } catch let error as TunnelError {
-                state = .failure(error: error)
-            } catch {
-                state = .failure(error: .transport(error.localizedDescription))
+            await withExponentialBackoff(maxRetries: 2) {
+                let info = try await self.apiClient.startTunnel(id: self.config.tunnelId)
+                self.state = .connected(info: info)
+                self.lastRefreshed = Date()
+            } onFailure: { error in
+                self.state = .failure(error: error)
             }
 
         case .stop:
             state = .disconnecting
-            do {
-                let info = try await apiClient.stopTunnel(id: config.tunnelId)
+            await withExponentialBackoff(maxRetries: 2) {
+                let info = try await self.apiClient.stopTunnel(id: self.config.tunnelId)
                 // After DELETE the tunnel may still report a status; treat non-healthy as disconnected.
                 if info.isRunning {
-                    state = .connected(info: info)
+                    self.state = .connected(info: info)
                 } else {
-                    state = .disconnected
+                    self.state = .disconnected
                 }
-                lastRefreshed = Date()
-            } catch let error as TunnelError {
-                state = .failure(error: error)
-            } catch {
-                state = .failure(error: .transport(error.localizedDescription))
+                self.lastRefreshed = Date()
+            } onFailure: { error in
+                self.state = .failure(error: error)
             }
 
         case .refresh:
+            // Polling refresh: keep last connected state on error, surface via transientError.
             do {
                 let info = try await apiClient.getTunnelStatus(id: config.tunnelId)
                 state = info.isRunning ? .connected(info: info) : .disconnected
                 lastRefreshed = Date()
+                clearTransientError()
             } catch let error as TunnelError {
-                state = .failure(error: error)
+                postTransientError(error)
             } catch {
-                state = .failure(error: .transport(error.localizedDescription))
+                postTransientError(.unknown(message: error.localizedDescription))
             }
 
         case .retry:
             // Retry goes back to disconnected then immediately starts.
             state = .disconnected
             await perform(.start)
+        }
+    }
+
+    // MARK: - Transient error management
+
+    /// Sets `transientError` and schedules an auto-dismiss after 3 seconds.
+    private func postTransientError(_ error: TunnelError) {
+        transientError = error
+        transientErrorDismissTask?.cancel()
+        transientErrorDismissTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run { self?.transientError = nil }
+        }
+    }
+
+    /// Clears any pending transient error immediately.
+    private func clearTransientError() {
+        transientErrorDismissTask?.cancel()
+        transientErrorDismissTask = nil
+        transientError = nil
+    }
+
+    // MARK: - Exponential backoff
+
+    /// Runs `work` up to `1 + maxRetries` times, doubling the delay after each
+    /// retryable failure.  Only retries when `TunnelError.shouldAutoRetry == true`.
+    private func withExponentialBackoff(
+        maxRetries: Int,
+        work: @escaping () async throws -> Void,
+        onFailure: @escaping (TunnelError) -> Void
+    ) async {
+        var attempt = 0
+        var delay: TimeInterval = 1
+
+        while true {
+            do {
+                try await work()
+                return
+            } catch let tunnelError as TunnelError {
+                if tunnelError.shouldAutoRetry && attempt < maxRetries {
+                    attempt += 1
+                    let actualDelay = tunnelError.suggestedRetryDelay > 0
+                        ? tunnelError.suggestedRetryDelay
+                        : delay
+                    try? await Task.sleep(nanoseconds: UInt64(actualDelay * 1_000_000_000))
+                    delay *= 2
+                } else {
+                    onFailure(tunnelError)
+                    return
+                }
+            } catch {
+                onFailure(.unknown(message: error.localizedDescription))
+                return
+            }
         }
     }
 

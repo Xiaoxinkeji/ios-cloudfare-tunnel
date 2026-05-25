@@ -18,6 +18,14 @@ struct HomeView: View {
 
             VStack(spacing: 0) {
 
+                // ── Transient error banner ────────────────────────────────
+                if let transientErr = viewModel.transientError {
+                    transientErrorBanner(transientErr)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .padding(.top, 8)
+                        .padding(.horizontal, 16)
+                }
+
                 Spacer()
 
                 // ── Tunnel name ───────────────────────────────────────────
@@ -39,6 +47,25 @@ struct HomeView: View {
                         .padding(.horizontal, 32)
                         .padding(.top, 12)
                         .transition(.opacity)
+                }
+
+                // ── Detail link (connected state only) ────────────────────
+                if case .connected(let info) = viewModel.state {
+                    NavigationLink {
+                        TunnelDetailView(tunnel: info) {
+                            await viewModel.perform(.refresh)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "info.circle")
+                                .imageScale(.small)
+                            Text("查看 Tunnel 详情")
+                                .font(.subheadline)
+                        }
+                        .foregroundStyle(.blue)
+                        .padding(.top, 16)
+                    }
+                    .transition(.opacity)
                 }
 
                 Spacer()
@@ -73,6 +100,7 @@ struct HomeView: View {
                 .environmentObject(viewModel)
         }
         .animation(.easeInOut(duration: 0.25), value: viewModel.state)
+        .animation(.easeInOut(duration: 0.2),  value: viewModel.transientError == nil)
         .onAppear {
             viewModel.startPolling()
         }
@@ -82,6 +110,35 @@ struct HomeView: View {
     }
 
     // MARK: - Subviews
+
+    /// Small banner shown at the top for non-fatal / transient errors.
+    private func transientErrorBanner(_ error: TunnelError) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .imageScale(.small)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(error.title)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(error.message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+                .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+        )
+    }
 
     @ViewBuilder
     private var statusIndicator: some View {
