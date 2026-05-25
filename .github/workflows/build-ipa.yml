@@ -1,4 +1,4 @@
-name: Build Unsigned IPA
+name: Build Enterprise IPA
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14  # Xcode 15, Apple Silicon
+    runs-on: macos-14
 
     steps:
       - name: Checkout
@@ -16,10 +16,36 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_15.4.app
 
-      - name: Show Xcode version
-        run: xcodebuild -version
+      - name: Install Apple certificate and provisioning profile
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          # Decode certificate and provisioning profile
+          CERT_PATH=$RUNNER_TEMP/build_certificate.p12
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
-      - name: Build (no signing)
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERT_PATH
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Import certificate
+          security import $CERT_PATH -P "$P12_PASSWORD" \
+            -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          # Install provisioning profile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: Build archive
         run: |
           xcodebuild \
             -project ios-cloudfare-tunnel.xcodeproj \
@@ -27,22 +53,39 @@ jobs:
             -configuration Release \
             -destination generic/platform=iOS \
             -archivePath $RUNNER_TEMP/app.xcarchive \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_STYLE=Manual \
             archive
 
-      - name: Package IPA (unsigned)
+      - name: Export IPA (Enterprise)
         run: |
-          mkdir -p $RUNNER_TEMP/ipa/Payload
-          cp -r $RUNNER_TEMP/app.xcarchive/Products/Applications/*.app \
-            $RUNNER_TEMP/ipa/Payload/
-          cd $RUNNER_TEMP/ipa
-          zip -r ../CloudfareTunnel-unsigned.ipa Payload
+          cat > $RUNNER_TEMP/ExportOptions.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>enterprise</string>
+              <key>compileBitcode</key>
+              <false/>
+              <key>stripSwiftSymbols</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/app.xcarchive \
+            -exportPath $RUNNER_TEMP/ipa \
+            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CloudfareTunnel-unsigned
-          path: ${{ runner.temp }}/CloudfareTunnel-unsigned.ipa
+          name: CloudfareTunnel-Enterprise
+          path: ${{ runner.temp }}/ipa/*.ipa
           retention-days: 30
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
