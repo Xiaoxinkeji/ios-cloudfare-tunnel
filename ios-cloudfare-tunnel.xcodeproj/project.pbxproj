@@ -10,7 +10,7 @@
 		A1000001000001 /* CloudfareTunnelApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000001 /* CloudfareTunnelApp.swift */; };
 		A1000002000002 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002000002 /* HomeView.swift */; };
 		A1000003000003 /* ConfigEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003000003 /* ConfigEditorView.swift */; };
-		A1000004000004 /* TunnelDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000004000004 /* TunnelDetailView.swift */; };
+		A100004D000004 /* TunnelDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200004D000004 /* TunnelDetailView.swift */; };
 		A1000004000004 /* TunnelStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000004000004 /* TunnelStateMachine.swift */; };
 		A1000005000005 /* TunnelError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000005000005 /* TunnelError.swift */; };
 		A1000006000006 /* TunnelAPIProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000006000006 /* TunnelAPIProtocol.swift */; };
@@ -25,7 +25,7 @@
 		A2000001000001 /* CloudfareTunnelApp.swift */  = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudfareTunnelApp.swift;  sourceTree = "<group>"; };
 		A2000002000002 /* HomeView.swift */             = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift;             sourceTree = "<group>"; };
 		A2000003000003 /* ConfigEditorView.swift */     = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigEditorView.swift;     sourceTree = "<group>"; };
-		A2000004000004 /* TunnelDetailView.swift */     = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelDetailView.swift;     sourceTree = "<group>"; };
+		A200004D000004 /* TunnelDetailView.swift */     = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelDetailView.swift;     sourceTree = "<group>"; };
 		A2000004000004 /* TunnelStateMachine.swift */   = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelStateMachine.swift;   sourceTree = "<group>"; };
 		A2000005000005 /* TunnelError.swift */          = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelError.swift;          sourceTree = "<group>"; };
 		A2000006000006 /* TunnelAPIProtocol.swift */    = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelAPIProtocol.swift;    sourceTree = "<group>"; };
@@ -64,7 +64,7 @@
 				A2000001000001 /* CloudfareTunnelApp.swift */,
 				A2000002000002 /* HomeView.swift */,
 				A2000003000003 /* ConfigEditorView.swift */,
-				A2000004000004 /* TunnelDetailView.swift */,
+				A200004D000004 /* TunnelDetailView.swift */,
 				A2000012000012 /* Info.plist */,
 			);
 			path = App;
@@ -164,7 +164,7 @@
 				A1000001000001 /* CloudfareTunnelApp.swift in Sources */,
 				A1000002000002 /* HomeView.swift in Sources */,
 				A1000003000003 /* ConfigEditorView.swift in Sources */,
-				A1000004000004 /* TunnelDetailView.swift in Sources */,
+				A100004D000004 /* TunnelDetailView.swift in Sources */,
 				A1000004000004 /* TunnelStateMachine.swift in Sources */,
 				A1000005000005 /* TunnelError.swift in Sources */,
 				A1000006000006 /* TunnelAPIProtocol.swift in Sources */,
