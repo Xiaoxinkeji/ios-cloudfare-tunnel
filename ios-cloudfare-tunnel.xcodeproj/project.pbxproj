@@ -22,6 +22,8 @@
 		A1000012000012 /* DNSRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000013000013 /* DNSRecord.swift */; };
 		A1000013000013 /* CloudflareDNSAPIProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000014000014 /* CloudflareDNSAPIProtocol.swift */; };
 		A1000014000014 /* TunnelNotificationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000015000015 /* TunnelNotificationState.swift */; };
+		A1000015000015 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000016000016 /* AppDelegate.swift */; };
+		A1000016000016 /* NotificationPermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000017000017 /* NotificationPermissionManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,6 +43,8 @@
 		A2000013000013 /* DNSRecord.swift */             = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNSRecord.swift;             sourceTree = "<group>"; };
 		A2000014000014 /* CloudflareDNSAPIProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareDNSAPIProtocol.swift; sourceTree = "<group>"; };
 		A2000015000015 /* TunnelNotificationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelNotificationState.swift; sourceTree = "<group>"; };
+		A2000016000016 /* AppDelegate.swift */           = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift;           sourceTree = "<group>"; };
+		A2000017000017 /* NotificationPermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPermissionManager.swift; sourceTree = "<group>"; };
 		A3000001000001 /* ios-cloudfare-tunnel.app */   = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ios-cloudfare-tunnel.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -71,6 +75,7 @@
 				A2000002000002 /* HomeView.swift */,
 				A2000003000003 /* ConfigEditorView.swift */,
 				A200004D000004 /* TunnelDetailView.swift */,
+				A2000016000016 /* AppDelegate.swift */,
 				A2000012000012 /* Info.plist */,
 			);
 			path = App;
@@ -90,6 +95,7 @@
 				A2000013000013 /* DNSRecord.swift */,
 				A2000014000014 /* CloudflareDNSAPIProtocol.swift */,
 				A2000015000015 /* TunnelNotificationState.swift */,
+				A2000017000017 /* NotificationPermissionManager.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -185,6 +191,8 @@
 				A1000012000012 /* DNSRecord.swift in Sources */,
 				A1000013000013 /* CloudflareDNSAPIProtocol.swift in Sources */,
 				A1000014000014 /* TunnelNotificationState.swift in Sources */,
+				A1000015000015 /* AppDelegate.swift in Sources */,
+				A1000016000016 /* NotificationPermissionManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
