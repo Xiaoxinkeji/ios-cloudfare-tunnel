@@ -43,11 +43,11 @@
 		A2000010000010 /* Storage.swift */              = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Storage.swift;              sourceTree = "<group>"; };
 		A2000011000011 /* JSONCoding.swift */           = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONCoding.swift;           sourceTree = "<group>"; };
 		A2000012000012 /* Info.plist */                 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml;   path = Info.plist;                 sourceTree = "<group>"; };
-		A2000013000013 /* DNSRecord.swift */             = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNSRecord.swift;             sourceTree = "<group>"; };
-		A2000014000014 /* CloudflareDNSAPIProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareDNSAPIProtocol.swift; sourceTree = "<group>"; };
-		A2000015000015 /* TunnelNotificationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelNotificationState.swift; sourceTree = "<group>"; };
+		A2000013000013 /* DNSRecord.swift */             = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/DNSRecord.swift;             sourceTree = "<group>"; };
+		A2000014000014 /* CloudflareDNSAPIProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API/CloudflareDNSAPIProtocol.swift; sourceTree = "<group>"; };
+		A2000015000015 /* TunnelNotificationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifications/TunnelNotificationState.swift; sourceTree = "<group>"; };
 		A2000016000016 /* AppDelegate.swift */           = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift;           sourceTree = "<group>"; };
-		A2000017000017 /* NotificationPermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPermissionManager.swift; sourceTree = "<group>"; };
+		A2000017000017 /* NotificationPermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifications/NotificationPermissionManager.swift; sourceTree = "<group>"; };
 		A2000018000018 /* AuthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthModels.swift; sourceTree = "<group>"; };
 		A2000019000019 /* TunnelControlBackendAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelControlBackendAPI.swift; sourceTree = "<group>"; };
 		A2000020000020 /* UIHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIHelpers.swift; sourceTree = "<group>"; };
