@@ -57,7 +57,6 @@ struct NotificationPrePromptView: View {
             Image(systemName: "bell.badge")
                 .font(.system(size: 56))
                 .foregroundStyle(.blue)
-                .symbolEffect(.bounce, value: true)
 
             VStack(spacing: 8) {
                 Text("接收 Tunnel 状态提醒")
